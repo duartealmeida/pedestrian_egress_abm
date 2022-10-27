@@ -10,7 +10,7 @@ global {
 	
 	float exit_size <- 108.3 parameter: true;
 	float square_area <- 5200 parameter: true;
-	float LOS <- 0.5;
+	float LOS <- 2;
 	
 	int nb_people <- int(square_area/LOS) parameter: true;
 	int nb_remaining <- nb_people update: people count(true);
@@ -437,11 +437,11 @@ species people{
 	aspect default {
 		
 		if(group_id != 1){
-			draw triangle(shoulder_length) color: #white border: #black rotate: -90 - heading;
+			draw triangle(shoulder_length) color: #white border: #black rotate: 90 + heading;
 			return;
 		}
 		
-		draw triangle(shoulder_length) color: color border: color rotate: -90 - heading;
+		draw triangle(shoulder_length) color: color border: color rotate: 90 + heading;
 		
 		loop i from: 0 to:length(positions)-2{
 			draw circle(0.05,positions[i]) color: color;
@@ -585,7 +585,7 @@ experiment main6 type: gui {
 	output {
 		display map{
 			species obstacle;
-			//species group;
+			species group;
 			species people;
 			species target;
 		}
