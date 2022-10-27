@@ -59,10 +59,10 @@ global {
 	int group_size <- 7  parameter: true;
 	
 	// Group SFM Params
-	float B_group_rep_vis <- 2.0;
 	
 	float B_group_attr <- 10.0;
 	float group_attr_threshold <- (group_size-1)/2;
+	
 	float B_group_rep <- 1.0;
 	float group_rep_threshold <- shoulder_length + 0.20;
 	
@@ -70,9 +70,18 @@ global {
 	int nb_collisions <- 0;
 	float avg_speed <- 0.0;
 	
+	//Performance measure (time to complete first step)
+	float start_time;
+	float end_time;
+	float cycle_time;
+	float sim_time;
+	
 	init {
 		
 		write "Experiment:" + name;
+		
+		group_attr_threshold <- (group_size-1)/2;
+		write("Group Attraction Threshold: " + group_attr_threshold);
 	
 		create obstacle from: buildings_file{
 			free_space <- free_space - (shape + P_shoulder_length);
@@ -159,9 +168,24 @@ global {
 		/*ask people{
 			do save_positions_to_file;
 		}*/
+		end_time <- machine_time;
+		sim_time <- end_time - start_time;
+		write(sim_time);
 		do pause;
 		do die;
 	}  
+	
+	reflex save_cycle_time when: cycle < 3{
+		if (cycle = 1){
+			start_time <- machine_time;
+		}
+		else if(cycle = 2){
+			end_time <- machine_time;
+			cycle_time <- end_time - start_time;
+			save (cycle_time)  to: "group/" + experiment.name + "/performance/" +  nb_people+ "/"+ "time.txt" type: "text";
+			write(cycle_time);		
+		}
+	}
 	
 	reflex save_data when: every(1#s){
 	 	if (cycle = 0){
@@ -185,66 +209,77 @@ global {
     }
 
     reflex calc_social_forces{
-    	ask people{//parallel:100{
- 			float repx <- 0.0;
- 			float repy <- 0.0;
+    	ask people parallel:100{
+ 			float sum_forces_x <- 0.0;
+ 			float sum_forces_y <- 0.0;
 
  			point to <- exit_target.centroid;
  			 
- 			hd <- 90 - self.heading(to);
+ 			float hd <- self.heading(to);
  			
      	 	if not (speedX * speedY = 0){
-     	 		h <- atan2(speedX, speedY);
+     	 		heading <- atan2(speedY, speedX);
      	 	}else{
-     	 		h <- hd;
+     	 		heading <- hd;
      	 	}
      	 	
-     	 	float h1 <- h;
+     	 	float h1 <- heading;
      	 	
-     		// Calc attraction to group center (F_att)
      	 	point group_center <- self.group.centroid;
-     	 	//centroid(polygon((people where (each.group_id = self.group_id )) collect (each.location)));
-     	 	//float angle_to_center
-     	 	//float gaze_angle <- h1
      	 	
-     	 	if(self distance_to group_center > group_attr_threshold){    	 	
-     	 		repx <- repx + B_group_attr * sin( 90 - self.heading(group_center) ) * (1 - cos(90 - self.heading(group_center) - h1));
-	       		repy <- repy + B_group_attr * cos( 90 - self.heading(group_center) ) * (1 - cos(90 - self.heading(group_center) - h1));
+     	 	//Calculation of the group cohesion forces (attraction forces to the group center of mass)  
+     	 	if(self distance_to group_center > group_attr_threshold){
+     	 		    	 	
+     	 		sum_forces_x <- sum_forces_x + B_group_attr * cos( self.heading(group_center) );
+     	 		
+	       		sum_forces_y <- sum_forces_y + B_group_attr * sin( self.heading(group_center) );
      	 	}
-     	 	//
      	 	
-  			// Group alt
+  			// Collisions calculation
+  			// A collision is detected when a neighbour is less than 0.5 meters close. 
   			collisions <- count(people, (each distance_to self < 0.5) and (each.group_id != self.group_id));
+  			
+  			//Query the pedestrian agents who are at the influence radius of the current agent
 	      	ask people at_distance(ped_influence_radius){
 	      		if self != myself{
-	      		// If group members, rep from them (F_rep)
-	       			if self.group_id = myself.group_id {
+	      			// Calculate the inter-group repulsion forces if a neighbour pedestrian is a group member 
+	      			if self.group_id = myself.group_id {
 	       				float distance <- self distance_to myself;
+	       				// Only apply intra-group repulsion if the group member is close enough
 	       				if(distance < group_rep_threshold){
-	       					repx <- repx + B_group_rep * sin( 90 - self.heading(myself.location) ) * (1 - cos(90 - self.heading(myself.location) - h1));
-	       					repy <- repy + B_group_rep * cos( 90 - self.heading(myself.location) ) * (1 - cos(90 - self.heading(myself.location) - h1));  
+	       					
+	       					sum_forces_x <- sum_forces_x + B_group_rep * cos(self.heading(myself.location) ) ;
+	       					//* (1 - sin(self.heading(myself.location) - h1));
+	       					sum_forces_y <- sum_forces_y + B_group_rep * sin(self.heading(myself.location) ) ;
+	       					//* (1 - sin(self.heading(myself.location) - h1));  
 	       				}
-	      		//
+	      			//Else, calculate the inter-person repulsion forces with non-group members (classic SFM)
 	      			}else{
-	       				//Fij
-	       				//collisions <- collisions + 1;
-	       				repx <- repx + A_ped * exp((shoulder_length - self distance_to myself) / D_ped) * sin( 90 - self.heading(myself.location) ) * (1 - cos(90 - self.heading(myself.location) - h1));
-	     	    		repy <- repy + A_ped * exp((shoulder_length - self distance_to myself) / D_ped) * cos( 90 - self.heading(myself.location) ) * (1 - cos(90 - self.heading(myself.location) - h1));
+
+	       				sum_forces_x <- sum_forces_x + A_ped * exp((shoulder_length - self distance_to myself) / D_ped) * 
+	       				cos(self.heading(myself.location) ) * (1 - sin(self.heading(myself.location) - h1));
+	       				
+	     	    		sum_forces_y <- sum_forces_y + A_ped * exp((shoulder_length - self distance_to myself) / D_ped) 
+	     	    		* sin(self.heading(myself.location) ) * (1 - sin(self.heading(myself.location) - h1));
 	       			}
 	      		}
 	      	}
 	      	
-	      	// Obstacle repulsion
+	      	// Calculation of obstacle repulsion forces (classic SFM) within influence range
 	      	ask obstacle at_distance(ped_influence_radius){
 
 	     		point obs <- (myself closest_points_with self)[1];
 	     		
-	       		repx <- repx + A_obs * exp((shoulder_length - obs distance_to myself) / D_obs) * sin( 90 -self.heading(obs, myself.location) ) * (1 - cos(90 - self.heading(obs, myself.location) - h1));
-	     	    repy <- repy + A_obs * exp((shoulder_length - obs distance_to myself) / D_obs) * cos( 90 -self.heading(obs, myself.location) ) * (1 - cos(90 - self.heading(obs, myself.location) - h1));
+	       		sum_forces_x <- sum_forces_x + A_obs * exp((shoulder_length - obs distance_to myself) / D_obs) * 
+	       		cos( self.heading(obs, myself.location) ) * (1 - sin(self.heading(obs, myself.location) - h1));
+	       		
+	     	    sum_forces_y <- sum_forces_y + A_obs * exp((shoulder_length - obs distance_to myself) / D_obs) 
+	     	    * sin(self.heading(obs, myself.location) ) * (1 - sin(self.heading(obs, myself.location) - h1));
 	      	}
 	      	
-			speedX <- speedX + step * (repx + (V0 * sin(hd) - speedX) / Tr);
-			speedY <-  speedY + step * (repy + (V0 * cos(hd) - speedY) / Tr);
+	      	//update of X and Y speed components
+			speedX <- speedX + step * (sum_forces_x + (V0 * cos(hd) - speedX) / Tr);
+			speedY <-  speedY + step * (sum_forces_y + (V0 * sin(hd) - speedY) / Tr);
  			 
     	}
     }
@@ -337,8 +372,7 @@ species people{
 	float speedX;
 	float speedY;
 	
-	float hd;
-	float h;
+	float heading;
 	
 	target exit_target;
 	list<point> trail <- [];
@@ -354,7 +388,10 @@ species people{
     	return sqrt(speedX*speedX + speedY*speedY);
     }
     
-    reflex save_position when: every(1#s){
+    reflex save_position{// when: every(1#s){
+    if(group_id != 1){
+    	return;
+    }
     	positions << location;
     	if(length(trail)>=10){
 			trail >> first(trail);
@@ -375,7 +412,6 @@ species people{
 	
 		if (self distance_to exit_target <= 0) {
 			nb_evacuated_per_step <- nb_evacuated_per_step + 1;
-			//do save_positions_to_file;
 			do die;
 		}
 	}
@@ -388,20 +424,35 @@ species people{
 		save (positions_line) to: "group/" + experiment.name + "/"+ randomFolder +"/"+ "trails.txt" type: "text" rewrite: false;
 	}
 	
-	aspect default {
-		draw triangle(shoulder_length) color: color border: color rotate: -h - 180;
+	rgb get_speed_color(float distance){
+		float instant_speed <- distance/step;
+		float percentage <- instant_speed/V0;
 		
-		//DRAW TRAIL
+		int r <- int(255 * percentage);
+		int b <- int(255 * (1-percentage));
+		
+		return rgb(r,0,b);
+	}
+	
+	aspect default {
+		
 		if(group_id != 1){
+			draw triangle(shoulder_length) color: #white border: #black rotate: -90 - heading;
 			return;
 		}
+		
+		draw triangle(shoulder_length) color: color border: color rotate: -90 - heading;
+		
 		loop i from: 0 to:length(positions)-2{
+			draw circle(0.05,positions[i]) color: color;
+			/*
 			if((i+1) < length(positions)){
 				geometry trail_line <- line([positions[i],positions[i+1]]);
-				draw trail_line color: color;
-			}
+				rgb line_color <- get_speed_color(positions[i] distance_to positions[i+1]); 
+				draw trail_line color: line_color width:100;
+			}*/
 		}
-		draw line([positions[length(positions)-1],location]) color: color;
+		draw line([positions[length(positions)-1],location]) color: color width:100;
 		
 	}
 }
@@ -534,7 +585,7 @@ experiment main6 type: gui {
 	output {
 		display map{
 			species obstacle;
-			species group;
+			//species group;
 			species people;
 			species target;
 		}
