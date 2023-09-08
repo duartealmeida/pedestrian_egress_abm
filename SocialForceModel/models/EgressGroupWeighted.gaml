@@ -13,18 +13,18 @@ global {
 	float LOS <- 4;
 	
 	//int nb_people <- int(square_area/LOS) parameter: true;
-	int nb_people <- 1800 parameter: true; //1800
+	int nb_people <- (18250 - 230) parameter: true;
 	int nb_remaining <- nb_people update: people count(true);
 	int nb_remaining_previous <- nb_remaining;
 	
 	float density <- nb_remaining / square_area;
 	
-	// File params
+	/* File params */
 	file buildings_file <- file("../includes/comercio/buildings2.shp") parameter: true;
 	file targets_file <- file("../includes/pombal/targets2.shp") parameter: true;
 	file praca_file <- file("../includes/pombal/start_area.shp") parameter: true; 
 	
-	// SFM params
+	/* SFM params */
 	float P_A_pedestrian_SFM parameter: true <- 2.1 category: "SFM" ;
 	float P_B_pedestrian_SFM parameter: true <- 0.3 category: "SFM" ;
 	float P_ped_influence_radius parameter: true <- 1.0 category: "SFM" ;
@@ -36,9 +36,9 @@ global {
 	float P_Tr_SFM parameter: true <- 0.5 category: "SFM" ;
 	float P_shoulder_length <- 0.45 parameter: true;
 	
-	// Group SFM Params
-	float line_of_sight_angle <- 90;
-	float B_group_vis <- 4;
+	/*  Group SFM Params */
+	//float line_of_sight_angle <- 90;
+	//float B_group_vis <- 4;
 	
 	float B_group_attr <- 10.0;
 	float group_attr_threshold <- (group_size_avg-1)/2;
@@ -48,18 +48,18 @@ global {
 	
 	int group_size_avg <- 3  parameter: true;
 	
-	list<float> group_size_dist <- [0.613899614, 0.214859647, 0.113534384, 0.057706355]; //from 2 to 5
-	list<float> group_speed_values <- [2, 1.5, 1, 0.5]; 
+	list<float> group_size_dist <- [0, 0.613899614, 0.214859647, 0.113534384, 0.057706355] parameter: true; //from 2 to 5
+	list<float> group_speed_values <- [0, 1.08, 0.99, 0.9775, 0.935] parameter: true; 
 	
-	// Behavior params
+	/*  Behavior params */
 	list<float> exit_attr <- [25.0, 25.0, 25.0, 25.0] parameter: true;
-	float socialization_time <- 0.00001 #hours parameter: true; //3.5 hours
+	float egress_interval_period <- 0.01 #hours parameter: true; //3.5 hours
 	
 	//float avg_group_speed <- 1.34;
 	//float std_dev_group_speed <- 0.37;
 	
-	float avg_group_speed <- 1.34;
-	float std_dev_group_speed <- 0.26;
+	//float avg_group_speed <- 1.34;
+	//float std_dev_group_speed <- 0.26;
 	
 	geometry shape <- envelope(buildings_file);
 	geometry free_space <- copy(shape);
@@ -70,7 +70,7 @@ global {
 	
 	//Impactos
 	
-	// SFM Variables
+	/* SFM Variables */
 	float A_ped <- P_A_pedestrian_SFM;
 	float D_ped <- P_B_pedestrian_SFM;
 	float A_obs <- P_A_obstacles_SFM;
@@ -93,9 +93,11 @@ global {
 	
 	//group id in the center of the map
 	int center_group_id <- 0;
+	int center_group_id_2 <- 0;
+	int center_group_id_3 <- 0;
 	
 	rgb background_color <- #white;
-	float cycle_duration <- 0.0001#seconds;
+	float cycle_duration <- 0.000001#seconds;
 	
 
 	float avg_social_time <- 0.0;
@@ -103,7 +105,7 @@ global {
 	init {
 		
 		write "Experiment:" + name;
-		write socialization_time;
+		write egress_interval_period;
 		
 		write("Group Attraction Threshold: " + group_attr_threshold);
 	
@@ -111,6 +113,9 @@ global {
 			free_space <- free_space - (shape + P_shoulder_length/2);
 			start_area <- start_area - (shape + P_shoulder_length);
 		}
+		
+		int nb_targets <- length(targets_file);
+		float default_weight <- 100/nb_targets;
 		
 		create target from: targets_file{
 			exit_ext1 <- shape.points closest_to start_area;
@@ -135,11 +140,11 @@ global {
 			
 			exit_sum <- exit_sum + exit_width;
 			
-			if id > 0{
+			if id > 0 and nb_targets < length(exit_attr) {
+				write(id);
 				weight <- exit_attr[id-1];
-			
 			}else{
-				weight <- 25;
+				weight <- default_weight;
 			}
 			
 			write("Exit " + id + ": " + exit_width);
@@ -153,10 +158,17 @@ global {
 		int size3 <- 0;
 		int size4 <- 0;
 		int size5 <- 0;
+		
 		int i <- 0;
 		loop while: length(people) < nb_people {
 			rgb group_color <- rnd_color(150,240); //160
 			int group_size <- weighted_random_group_size();
+			
+			/*point start_center <- start_area.centroid;
+			float mean_x <- start_center.x;
+			float mean_y <- start_center.y;
+			float std_dev <- 2;
+			point group_center <- point(gauss(mean_x, std_dev), gauss(mean_y, std_dev));*/
 			
 			point group_center <- any_location_in(start_area);
 			geometry group_spawn_area <- circle(1, group_center) - unusable_area ;
@@ -165,7 +177,7 @@ global {
 			
 			list<people> group_members <- [];
 			
-			float group_speed <- group_speed_values[group_size - 2];
+			float group_speed <- group_speed_values[group_size - 1];
 			
 			create people number: group_size {
 				V0 <- group_speed;
@@ -189,8 +201,10 @@ global {
 					member.group <- self;
 				}
 				
-				int rand_time <- int(rnd(0, socialization_time));
-				social_time <- ((rand_time^2) / (socialization_time^2)) * socialization_time;
+				do update;
+				
+				int rand_time <- int(rnd(0, egress_interval_period));
+				social_time <- ((rand_time^2) / (egress_interval_period^2)) * egress_interval_period;
 				avg_social_time <- avg_social_time + social_time;
 			}
 			
@@ -212,60 +226,22 @@ global {
 		write("Size 4: " + (size4/i)*100 +"%");
 		write("Size 5: " + (size5/i)*100 +"%");
 		
-		/* 
-		int nb_groups <- int(nb_people/group_size_avg);
-		// Create Groups
-		loop i from: 0 to: nb_groups{ 
-			rgb group_color <- rnd_color(150,240); //160
-			int group_size <- int(gauss(group_size_avg, 2));
-			
-			if (group_size < 1){
-				group_size <- 1;
-			}
-	
-			point group_center <- any_location_in(start_area);
-			geometry group_spawn_area <- circle(1, group_center) - unusable_area ;
-			
-			target group_target <- weighted_random_exit();
-			
-			list<people> group_members <- [];
-			
-			float group_speed <- gauss(avg_group_speed, std_dev_group_speed);
-			
-			create people number: group_size {
-				V0 <- group_speed;
-				group_id <- i;
-				color <- group_color;
-				location <- any_location_in(group_spawn_area);
-				exit_target <- group_target;
-				target_point <- exit_target.centroid;//exit_target.exit_points[rnd(0, length(exit_target.exit_points)-1)];
-				group_members << self;
-			}
-			
-			create group{
-				id <- i;
-				color <- group_color;
-				size <- group_size;
-				speed <- group_speed;
-				group_attr_threshold <- (size-1)/2;
-				members <- group_members;
-				
-				loop member over: members{
-					member.group <- self;
-				}
-				
-				int rand_time <- int(rnd(0, socialization_time));
-				social_time <- ((rand_time^2) / (socialization_time^2)) * socialization_time;
-				avg_social_time <- avg_social_time + social_time;
-			}
-			
-		}*/
 		
 		write("Avg Social Time: "+ (avg_social_time / length(group)));
 		
 		point map_center <- centroid(start_area);
-		center_group_id <- (people closest_to map_center).group_id; 
+		
+		list<group> center_groups <- (group closest_to (map_center, 3)); 
+		
+		center_group_id <- center_groups[0].id; 
+		center_group_id_2 <- center_groups[1].id; 
+		center_group_id_3 <- center_groups[2].id; 
+		
+		/* 
+		center_group_id <- (people closest_to map_center).group_id; */
 		(group where( each.id = center_group_id ))[0].social_time <- 0.0;
+		(group where( each.id = center_group_id_2 ))[0].social_time <- 0.0;
+		(group where( each.id = center_group_id_3 ))[0].social_time <- 0.0;
 		
 		write("Number of pedestrians: " + length(people));
 		//
@@ -295,8 +271,7 @@ global {
 		loop prob over:group_size_dist{
 			iter_sum <- iter_sum + prob;
 			if(random <= iter_sum){
-				write(i+2);
-				return i + 2;
+				return i + 1;
 			}
 			i <- i + 1;
 		}
@@ -313,7 +288,7 @@ global {
 		}
 	}
 	
-	reflex stop when: (length(people)/nb_people) <= 0.1  {
+	reflex stop when: (length(people)/nb_people) <= 0.01  {
 		/*ask people{
 			do save_positions_to_file;
 		}*/
@@ -362,7 +337,7 @@ global {
     }
     
      reflex update_groups{
-    	ask group{
+    	ask group parallel:50{
  			do update;
 		}
     }
@@ -557,6 +532,7 @@ species group{
     		sum_y <- sum_y + member.location.y;
     	}
     	centroid <- point(sum_x/length(members), sum_y/length(members));
+    	location <- centroid;
 
     	positions << centroid;
     	if(length(trail)>=10){
@@ -623,8 +599,8 @@ species people{
     	return sqrt(speedX*speedX + speedY*speedY);
     }
     
-    reflex save_position{// when: every(1#s){
-	    if(group_id != center_group_id){
+    reflex save_position when: every(0.2 #s){
+	    if(group_id != center_group_id and group_id != center_group_id_2 and group_id != center_group_id_3){
 	    	return;
 	    }
     	positions << location;
@@ -671,7 +647,7 @@ species people{
 	
 	aspect default {
 		rgb ped_color;
-		if(group_id != center_group_id){
+		if(group_id != center_group_id and group_id != center_group_id_2 and group_id != center_group_id_3){
 			if(V0 = 0){
 				ped_color <- #white;
 			}else{
@@ -679,9 +655,18 @@ species people{
 			}
 			
 		}else{
-			ped_color <- #green;
+			if(group_id = center_group_id){
+				ped_color <- #green;
+			}else if(group_id = center_group_id_2){
+				return;
+				ped_color <- #blue;
+			}else if(group_id = center_group_id_3){
+				return;
+				ped_color <- #red;
+			}
+				
 			loop i from: 0 to:length(positions)-2{
-				draw circle(0.05,positions[i]) color: #green;
+				draw circle(0.03,positions[i]) color: ped_color;
 				/*
 				if((i+1) < length(positions)){
 					geometry trail_line <- line([positions[i],positions[i+1]]);
@@ -696,6 +681,7 @@ species people{
 		draw ellipse(shoulder_length, 0.15) color: ped_color border: #black rotate: 90 + heading;
 		draw circle(0.075) color: ped_color border: #black rotate: 90 + heading;
 	}
+	
 }
 
 species obstacle {
@@ -863,13 +849,59 @@ experiment main7 type: gui {
 	}
 }
 
-experiment main_pombal type: gui {
+experiment z_pombal type: gui {
 	float minimum_cycle_duration <- cycle_duration;
 	parameter "buildings" var: buildings_file <- file("../includes/pombal/buildings2.shp");
-	parameter "targets" var: targets_file <- file("../includes/pombal/targets2.shp");
+	parameter "targets" var: targets_file <- file("../includes/pombal/targets.shp");
 	parameter "start_area" var: praca_file <- file("../includes/pombal/start_area.shp");
 	
-	parameter "group_size" var: group_size_avg <- 4;
+	parameter "egress_interval_period" var: egress_interval_period <- 0.0001 #hours;
+	
+	output {
+		display map background: background_color{
+			species obstacle;
+			species people;
+			species target;
+			species group;
+		}
+		display chart_display refresh: every(100 #cycles) {
+			chart "Percentage of Evacuated pedestrians" type: series {
+				data "Remaining pedestrians" value: nb_remaining color: #green;
+			}
+		}
+	}
+}
+
+experiment z_alameda type: gui {
+	float minimum_cycle_duration <- cycle_duration;
+	parameter "buildings" var: buildings_file <- file("../includes/alameda/buildings3.shp");
+	parameter "targets" var: targets_file <- file("../includes/alameda/targets.shp");
+	parameter "start_area" var: praca_file <- file("../includes/alameda/start_area.shp");
+	
+	parameter "egress_interval_period" var: egress_interval_period <- 0.0001 #hours;
+	
+	output {
+		display map background: background_color{
+			species obstacle;
+			species people;
+			species target;
+			species group;
+		}
+		display chart_display refresh: every(100 #cycles) {
+			chart "Percentage of Evacuated pedestrians" type: series {
+				data "Remaining pedestrians" value: nb_remaining color: #green;
+			}
+		}
+	}
+}
+
+experiment z_comercio type: gui {
+	float minimum_cycle_duration <- cycle_duration;
+	parameter "buildings" var: buildings_file <- file("../includes/comercio/comercio1.shp");
+	parameter "targets" var: targets_file <- file("../includes/comercio/targets.shp");
+	parameter "start_area" var: praca_file <- file("../includes/comercio/praca.shp");
+	
+	parameter "egress_interval_period" var: egress_interval_period <- 0.0001 #hours;
 	
 	output {
 		display map background: background_color{
@@ -892,17 +924,17 @@ experiment monumental type: gui {
 	parameter "targets" var: targets_file <- file("../includes/municipio/targets.shp");
 	parameter "start_area" var: praca_file <- file("../includes/municipio/start_area_stage.shp");
 	
-	parameter "group_size" var: group_size_avg <- 4;
+	parameter "egress_interval_period" var: egress_interval_period <- 0.00001 #hours;
 	
 	output {
 		display map background: background_color{
-			//image file:"../includes/municipio/municipio.png" transparency: 0.5;
+			image file:"../includes/municipio/municipio.png" transparency: 0.3;
 			species obstacle;
 			species people;
 			species target;
 			species group;
 		}
-		display chart_display refresh: every(100 #cycles) {
+		display chart_display refresh: every(5 #minutes) {
 			chart "Percentage of Evacuated pedestrians" type: series {
 				data "Remaining pedestrians" value: nb_remaining color: #green;
 			}
