@@ -13,7 +13,7 @@ global {
 	float LOS <- 4;
 	
 	//int nb_people <- int(square_area/LOS) parameter: true;
-	int nb_people <- (18250 - 230) parameter: true;
+	int nb_people <- (1825 - 230) parameter: true;
 	int nb_remaining <- nb_people update: people count(true);
 	int nb_remaining_previous <- nb_remaining;
 	
@@ -872,7 +872,7 @@ experiment z_pombal type: gui {
 	}
 }
 
-experiment z_alameda type: gui {
+experiment _alameda type: gui {
 	float minimum_cycle_duration <- cycle_duration;
 	parameter "buildings" var: buildings_file <- file("../includes/alameda/buildings3.shp");
 	parameter "targets" var: targets_file <- file("../includes/alameda/targets.shp");
@@ -895,7 +895,7 @@ experiment z_alameda type: gui {
 	}
 }
 
-experiment z_comercio type: gui {
+experiment _comercio type: gui {
 	float minimum_cycle_duration <- cycle_duration;
 	parameter "buildings" var: buildings_file <- file("../includes/comercio/comercio1.shp");
 	parameter "targets" var: targets_file <- file("../includes/comercio/targets.shp");
@@ -918,7 +918,7 @@ experiment z_comercio type: gui {
 	}
 }
 
-experiment monumental type: gui {
+experiment _monumental type: gui {
 	float minimum_cycle_duration <- cycle_duration;
 	parameter "buildings" var: buildings_file <- file("../includes/municipio/buildings.shp");
 	parameter "targets" var: targets_file <- file("../includes/municipio/targets.shp");
@@ -938,6 +938,26 @@ experiment monumental type: gui {
 			chart "Percentage of Evacuated pedestrians" type: series {
 				data "Remaining pedestrians" value: nb_remaining color: #green;
 			}
+		}
+	}
+}
+
+experiment _monumental_demo type: gui {
+	float minimum_cycle_duration <- 0.1 #seconds;
+	parameter "buildings" var: buildings_file <- file("../includes/municipio/buildings.shp");
+	parameter "targets" var: targets_file <- file("../includes/municipio/targets.shp");
+	parameter "start_area" var: praca_file <- file("../includes/municipio/start_area_stage.shp");
+	
+	parameter "egress_interval_period" var: egress_interval_period <- 0.01 #hours;
+	parameter "nb_people" var: nb_people <- 1500;
+	
+	output {
+		display map background: background_color{
+			image file:"../includes/municipio/municipio.png" transparency: 0.3;
+			species obstacle;
+			species people;
+			species target;
+			species group;
 		}
 	}
 }
